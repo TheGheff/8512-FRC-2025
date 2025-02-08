@@ -9,11 +9,8 @@ import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.drive.MecanumDrive;
 import com.revrobotics.spark.SparkMax;
-import com.revrobotics.spark.SparkBase.PersistMode;
-import com.revrobotics.spark.SparkBase.ResetMode;
 import com.revrobotics.spark.config.SparkMaxConfig;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
-import frc.robot.Constants;
 public class Robot extends TimedRobot {
   private static final int kFrontLeftChannel = 1;
   private static final int kRearLeftChannel = 4;
@@ -48,8 +45,4 @@ public class Robot extends TimedRobot {
       m_robotDrive.driveCartesian(-m_stick.getRawAxis(2)/20, -m_stick.getRawAxis(0)/20, m_stick.getRawAxis(1)/20);
     }
   }
-  // @Override
-  // public void teleopPeriodic() {
-  //   m_robotDrive.driveCartesian(-m_stick.getRawAxis(0), -m_stick.getRawAxis(1), (m_stick.getRawAxis(5)-m_stick.getRawAxis(4)));
-  // }
 }
