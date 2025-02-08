@@ -8,41 +8,54 @@ import edu.wpi.first.util.sendable.SendableRegistry;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.drive.MecanumDrive;
+import edu.wpi.first.wpilibj2.command.CommandScheduler;
+import edu.wpi.first.wpilibj2.command.button.JoystickButton;
+
 import com.revrobotics.spark.SparkMax;
-import com.revrobotics.spark.config.SparkMaxConfig;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
+import frc.robot.Constants.DriveConstants;
+import frc.robot.Constants.ControllerConstants;
+import frc.robot.subsystems.LiftSubSystem;
 public class Robot extends TimedRobot {
-  private static final int kFrontLeftChannel = 1;
-  private static final int kRearLeftChannel = 4;
-  private static final int kFrontRightChannel = 2;
-  private static final int kRearRightChannel = 3;
   private static final int kJoystickChannel = 0;
-  private static final int kButtonTurbo = Constants.ControllerConstants.RT;
-  private final MecanumDrive m_robotDrive;
-  private final Joystick m_stick;
+
+  SparkMax frontLeft = new SparkMax(DriveConstants.kFrontLeftChannel, MotorType.kBrushless);
+  SparkMax rearLeft = new SparkMax(DriveConstants.kRearLeftChannel, MotorType.kBrushless);
+  SparkMax frontRight = new SparkMax(DriveConstants.kFrontRightChannel, MotorType.kBrushless);
+  SparkMax rearRight = new SparkMax(DriveConstants.kRearRightChannel, MotorType.kBrushless);
+  // SparkMax lift = new SparkMax(DriveConstants.kLiftChannel, MotorType.kBrushless);
+  private final MecanumDrive m_robotDrive = new MecanumDrive(frontLeft::set, rearLeft::set, rearRight::set,frontRight::set);
+  private final Joystick m_stick = new Joystick(kJoystickChannel);
+  private final JoystickButton kButtonTurbo = new JoystickButton(m_stick, ControllerConstants.RT);
+  private final JoystickButton kButtonRaise = new JoystickButton(m_stick, ControllerConstants.RB);
+  private final JoystickButton kButtonLower = new JoystickButton(m_stick, ControllerConstants.LB);
+  private final LiftSubSystem m_lift = new LiftSubSystem();
 
   public Robot() {
-    SparkMax frontLeft = new SparkMax(kFrontLeftChannel, MotorType.kBrushless);
-    SparkMax rearLeft = new SparkMax(kRearLeftChannel, MotorType.kBrushless);
-    SparkMax frontRight = new SparkMax(kFrontRightChannel, MotorType.kBrushless);
-    SparkMax rearRight = new SparkMax(kRearRightChannel, MotorType.kBrushless);
-    SparkMaxConfig invertedConfig = new SparkMaxConfig();
-    invertedConfig.inverted(true);
-    // frontLeft.configure(invertedConfig, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
-    m_robotDrive = new MecanumDrive(frontLeft::set, rearLeft::set, rearRight::set,frontRight::set);//frontRight::set, rearRight::set);
-    m_stick = new Joystick(kJoystickChannel);
     SendableRegistry.addChild(m_robotDrive, frontLeft);
     SendableRegistry.addChild(m_robotDrive, rearLeft);
     SendableRegistry.addChild(m_robotDrive, frontRight);
     SendableRegistry.addChild(m_robotDrive, rearRight);
   }
+  @Override
+  public void robotPeriodic() {
+    CommandScheduler.getInstance().run();
+  }
+
+  @Override
+  public void teleopInit() {
+    kButtonRaise.onTrue(m_lift.raise());
+    kButtonRaise.onFalse(m_lift.stop());
+    kButtonLower.onTrue(m_lift.lower());
+    kButtonLower.onFalse(m_lift.stop());
+  }
 
   @Override
   public void teleopPeriodic() {
-    if(m_stick.getRawButton(kButtonTurbo)) {
-      m_robotDrive.driveCartesian(-m_stick.getRawAxis(2)/10, -m_stick.getRawAxis(0)/10, m_stick.getRawAxis(1)/10);
+    if(kButtonTurbo.getAsBoolean()) {
+      m_robotDrive.driveCartesian(-m_stick.getRawAxis(2)/5, -m_stick.getRawAxis(0)/5, m_stick.getRawAxis(1)/5);
     } else {
-      m_robotDrive.driveCartesian(-m_stick.getRawAxis(2)/20, -m_stick.getRawAxis(0)/20, m_stick.getRawAxis(1)/20);
+      m_robotDrive.driveCartesian(-m_stick.getRawAxis(2)/10, -m_stick.getRawAxis(0)/10, m_stick.getRawAxis(1)/10);
     }
   }
 }

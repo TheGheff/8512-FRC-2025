@@ -15,10 +15,11 @@ package frc.robot;
 public final class Constants {
   public static class DriveConstants {
     //Motor Controller Assignments
-    public static final int kLeftMotor1Port = 3;
-    public static final int kLeftMotor2Port = 4;
-    public static final int kRightMotor1Port = 1;
-    public static final int kRightMotor2Port = 2;
+    public static final int kFrontLeftChannel = 1;
+    public static final int kRearLeftChannel = 4;
+    public static final int kFrontRightChannel = 2;
+    public static final int kRearRightChannel = 3;
+    public static final int kLiftChannel = 5;
     public static final double kGearboxRatio = 1/12.75; //Ratio = 1:12.75
     public static final double kWheelRadius = 0.0762; //3in = 0.0762 meters
     public static final double kTrackWidth = 0.56; // meters
