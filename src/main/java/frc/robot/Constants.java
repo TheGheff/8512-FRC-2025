@@ -28,7 +28,7 @@ public final class Constants {
     public static final double kDriveD = 1;
     public static final double kDriveIz = 0; 
     public static final double kDriveFF = 0; 
-    public static final double kDriveMaxOutput = 1; 
+    public static final double kDriveMaxOutput = 1;
     public static final double kDriveMinOutput = -1;
   }
   public static class OperatorConstants {
