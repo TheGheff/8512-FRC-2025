@@ -19,6 +19,7 @@ public final class Constants {
     public static final int kRearLeftChannel = 4;
     public static final int kFrontRightChannel = 2;
     public static final int kRearRightChannel = 3;
+    public static final int DRIVE_MOTOR_CURRENT_LIMIT = 60;
     public static final int kLiftChannel = 5;
     public static final double kGearboxRatio = 1/12.75; //Ratio = 1:12.75
     public static final double kWheelRadius = 0.0762; //3in = 0.0762 meters
@@ -33,6 +34,7 @@ public final class Constants {
   }
   public static class OperatorConstants {
     public static final int kDriverControllerPort = 0;
+    public static final int kOperatorControllerPort = 1;
   }
 
   // public static class ShooterConstants{
