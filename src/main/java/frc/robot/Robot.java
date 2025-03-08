@@ -7,6 +7,7 @@ package frc.robot;
 import edu.wpi.first.networktables.GenericEntry;
 import edu.wpi.first.util.sendable.SendableRegistry;
 import edu.wpi.first.wpilibj.Joystick;
+import edu.wpi.first.wpilibj.Servo;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.drive.MecanumDrive;
 import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
@@ -26,6 +27,8 @@ public class Robot extends TimedRobot {
   private static final int kFrontRightChannel = 2;
   private static final int kRearRightChannel = 3;
   private static final int kLiftChannel = 5;
+  private static final int kLeftTemp = 0;
+  private static final int kRightTemp = 1;
   private static final int kDriverController = 0;
   private static final int kOperatorController = 1;
   private static final int kButtonTurbo = Constants.ControllerConstants.RT;
@@ -33,6 +36,9 @@ public class Robot extends TimedRobot {
   private static final int kButtonGyroReset = Constants.ControllerConstants.BACK;
   private static final int kButtonLiftUp = Constants.ControllerConstants.Y;
   private static final int kButtonLiftDown = Constants.ControllerConstants.A;
+  private static final int kButtonActUp = Constants.ControllerConstants.RB;
+  private static final int kButtonActDown = Constants.ControllerConstants.LB;
+  private static final int kButtonActSelect = Constants.ControllerConstants.B;
   private final MecanumDrive m_robotDrive;
   private final Joystick m_driver;
   private final Joystick m_operator;
@@ -43,11 +49,17 @@ public class Robot extends TimedRobot {
   private double gyroAdjust;
   private static RelativeEncoder liftEncoder;
   private static SparkMax lift;
+  private Servo leftAct;
+  private Servo rightAct;
+  private double leftpos;
+  private double rightpos;
   public Robot() {
     SparkMax frontLeft = new SparkMax(kFrontLeftChannel, MotorType.kBrushless);
     SparkMax rearLeft = new SparkMax(kRearLeftChannel, MotorType.kBrushless);
     SparkMax frontRight = new SparkMax(kFrontRightChannel, MotorType.kBrushless);
     SparkMax rearRight = new SparkMax(kRearRightChannel, MotorType.kBrushless);
+    leftAct = new Servo(kLeftTemp);
+    rightAct = new Servo(kRightTemp);
     lift = new SparkMax(kLiftChannel, MotorType.kBrushless);
     liftEncoder = lift.getEncoder();
     gyro = new AHRS(NavXComType.kMXP_SPI);
@@ -67,6 +79,9 @@ public class Robot extends TimedRobot {
   public void teleopInit() {
     gyro.reset();
     gyroAdjust = 0;
+    liftEncoder.setPosition(0);
+    leftpos = 0;
+    rightpos = 0;
   }
   public void teleopPeriodic() {
     if(m_driver.getRawButton(kButtonGyroReset)) {
@@ -89,9 +104,33 @@ public class Robot extends TimedRobot {
       gyroAdjust += rotation / 100;
       rotation = 0;
     }
-    // lift.set((m_operator.getRawButton(kButtonLiftUp) ? 1.0 : 0.0) * StrictMath.exp(-liftEncoder.getPosition() / 20) - (m_operator.getRawButton(kButtonLiftDown) ? 1.0 : 0.0) * StrictMath.exp(liftEncoder.getPosition() / 20));
-    double target = 50 * (m_operator.getRawButton(kButtonLiftUp) ? 1.0 : 0.0) + 25 * (m_operator.getRawButton(kButtonLiftDown) ? 1.0 : 0.0);
-    lift.set(StrictMath.exp(-(liftEncoder.getPosition() - target) / 20) - StrictMath.exp((liftEncoder.getPosition() - target) / 20));
+    // will go from 0 to 400
+    // double speed = (m_operator.getRawButton(kButtonLiftUp) ? 1.0 : 0.0) * StrictMath.exp(-liftEncoder.getPosition() / 20) - (m_operator.getRawButton(kButtonLiftDown) ? 1.0 : 0.0) * StrictMath.exp(liftEncoder.getPosition() / 20);
+    // double speed = (m_operator.getRawButton(kButtonLiftUp) ? 1.0 : 0.0) - (m_operator.getRawButton(kButtonLiftDown) ? 1.0 : 0.0);
+    double speed = -m_operator.getRawAxis(1)*(0.2-liftEncoder.getPosition()*(liftEncoder.getPosition()/50000-0.008));
+    if(speed > 1.0) {
+      speed = 1.0;
+    }
+    if(speed < -1.0) {
+      speed = -1.0;
+    }
+    lift.set(speed);
+    speed = (m_operator.getRawButton(kButtonActUp) ? 1.0 : 0.0) - (m_operator.getRawButton(kButtonActDown) ? 1.0 : 0.0);
+    if(speed > 1.0) {
+      speed = 1.0;
+    }
+    if(speed < -1.0) {
+      speed = -1.0;
+    }
+    if(m_operator.getRawButton(kButtonActSelect)) {
+      leftpos += speed / 100;
+      leftAct.set(leftpos);
+    } else {
+      rightpos += speed / 100;
+      rightAct.set(rightpos);
+    }
+    // double target = 50 * (m_operator.getRawButton(kButtonLiftUp) ? 1.0 : 0.0) + 25 * (m_operator.getRawButton(kButtonLiftDown) ? 1.0 : 0.0);
+    // lift.set(StrictMath.exp(-(liftEncoder.getPosition() - target) / 20) - StrictMath.exp((liftEncoder.getPosition() - target) / 20));
     gyroMeasure += gyroAdjust;
     double gyroAdjustedSideways = sideways * StrictMath.cos(gyroMeasure) + forwards * StrictMath.sin(gyroMeasure);
     double gyroAdjustedForwards = forwards * StrictMath.cos(gyroMeasure) - sideways * StrictMath.sin(gyroMeasure);
