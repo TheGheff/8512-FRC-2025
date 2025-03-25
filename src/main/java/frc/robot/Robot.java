@@ -6,13 +6,20 @@ package frc.robot;
 
 import edu.wpi.first.networktables.GenericEntry;
 import edu.wpi.first.util.sendable.SendableRegistry;
+import edu.wpi.first.wpilibj.Encoder;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.Servo;
 import edu.wpi.first.wpilibj.TimedRobot;
+
+import java.util.LinkedList;
+import java.util.Queue;
+import java.util.Timer;
 import edu.wpi.first.wpilibj.drive.MecanumDrive;
 import edu.wpi.first.wpilibj.shuffleboard.Shuffleboard;
 import edu.wpi.first.wpilibj.shuffleboard.ShuffleboardTab;
 import java.lang.StrictMath;
+import java.util.TimerTask;
+import java.util.function.BooleanSupplier;
 
 import com.revrobotics.RelativeEncoder;
 import com.revrobotics.spark.SparkMax;
@@ -27,6 +34,8 @@ public class Robot extends TimedRobot {
   private static final int kFrontRightChannel = 2;
   private static final int kRearRightChannel = 3;
   private static final int kLiftChannel = 5;
+  private static final int kIntakeLeftChannel = 6;
+  private static final int kIntakeRightChannel = 7;
   private static final int kLeftTemp = 0;
   private static final int kRightTemp = 1;
   private static final int kDriverController = 0;
@@ -49,18 +58,34 @@ public class Robot extends TimedRobot {
   private double gyroAdjust;
   private static RelativeEncoder liftEncoder;
   private static SparkMax lift;
+  private static SparkMax intakeLeft;
+  private static SparkMax intakeRight;
   private Servo leftAct;
   private Servo rightAct;
   private double leftpos;
   private double rightpos;
+  private double autoxaxis;
+  private double autoyaxis;
+  private double autorot;
+  private Timer timer;
+  private commandStream commandQueue;
+  private boolean working;
+  private RelativeEncoder frontLeftEncoder;
   public Robot() {
+    commandQueue = new commandStream();
+    working = false;
+    timer = new Timer();
     SparkMax frontLeft = new SparkMax(kFrontLeftChannel, MotorType.kBrushless);
     SparkMax rearLeft = new SparkMax(kRearLeftChannel, MotorType.kBrushless);
     SparkMax frontRight = new SparkMax(kFrontRightChannel, MotorType.kBrushless);
     SparkMax rearRight = new SparkMax(kRearRightChannel, MotorType.kBrushless);
+    frontLeftEncoder = frontLeft.getEncoder();
+    frontLeftEncoder.setPosition(0);
     leftAct = new Servo(kLeftTemp);
     rightAct = new Servo(kRightTemp);
     lift = new SparkMax(kLiftChannel, MotorType.kBrushless);
+    intakeLeft = new SparkMax(kIntakeLeftChannel, MotorType.kBrushless);
+    intakeRight = new SparkMax(kIntakeRightChannel, MotorType.kBrushless);
     liftEncoder = lift.getEncoder();
     gyro = new AHRS(NavXComType.kMXP_SPI);
     m_robotDrive = new MecanumDrive(frontLeft::set, rearLeft::set, rearRight::set,frontRight::set);
@@ -75,7 +100,6 @@ public class Robot extends TimedRobot {
     val = tab.add("Apparent angle measure", 0).getEntry();
     liftVal = tab.add("Lift position", 0).getEntry();
   }
-
   public void teleopInit() {
     gyro.reset();
     gyroAdjust = 0;
@@ -115,6 +139,15 @@ public class Robot extends TimedRobot {
       speed = -1.0;
     }
     lift.set(speed);
+    speed = -m_operator.getRawAxis(3);
+    if(speed > 1.0) {
+      speed = 1.0;
+    }
+    if(speed < -1.0) {
+      speed = -1.0;
+    }
+    intakeLeft.set(speed);
+    intakeRight.set(-speed);
     speed = (m_operator.getRawButton(kButtonActUp) ? 1.0 : 0.0) - (m_operator.getRawButton(kButtonActDown) ? 1.0 : 0.0);
     if(speed > 1.0) {
       speed = 1.0;
@@ -135,5 +168,164 @@ public class Robot extends TimedRobot {
     double gyroAdjustedSideways = sideways * StrictMath.cos(gyroMeasure) + forwards * StrictMath.sin(gyroMeasure);
     double gyroAdjustedForwards = forwards * StrictMath.cos(gyroMeasure) - sideways * StrictMath.sin(gyroMeasure);
     m_robotDrive.driveCartesian(-rotation, -gyroAdjustedSideways, -gyroAdjustedForwards);
+  }
+  public class commandStream {
+    private Queue<command> queue;
+    public commandStream() {
+        queue = new LinkedList<>();
+    }
+    public void deposit(command element) {
+        queue.add(element);
+    }
+    public command withdrawl() {
+        return queue.poll();
+    }
+    public boolean has() {
+        return !queue.isEmpty();
+    }
+  }
+  class task extends TimerTask {
+    public command com;
+    public task (command com) {
+      this.com = com;
+    }
+    public void run () {
+      this.com.schedule();
+    }
+  }
+  class command extends TimerTask {
+    public int type;
+    public long wait;
+    public BooleanSupplier cond;
+    public command (long wait) {
+      this.wait = wait;
+      this.type = 0;
+      commandQueue.deposit(this);
+    }
+    public command (BooleanSupplier conditionEvaluator) {
+      this.cond = conditionEvaluator;
+      this.type = 1;
+      commandQueue.deposit(this);
+    }
+    public void act() {;}
+    public void run() {
+      if (type==0) {
+        act();
+      }
+      working = false;
+    }
+    public void schedule() {
+      if (type == 0) {
+        timer.schedule(this, wait);
+      } else if (type == 1) {
+        if (this.cond.getAsBoolean()) {
+          timer.schedule(this, 0);
+        } else {
+          timer.schedule(new task(this), 50);
+        }
+      }
+    }
+  }
+  class xaxisset extends command {
+    public double val;
+    public xaxisset(long wait, double val) {
+      super(wait);
+      this.val = val;
+    }
+    public xaxisset(double val) {
+      super(0);
+      this.val = val;
+    }
+    public void act() {
+      autoxaxis = this.val;
+    }
+  }
+  class yaxisset extends command {
+    public double val;
+    public yaxisset(long wait, double val) {
+      super(wait);
+      this.val = val;
+    }
+    public yaxisset(double val) {
+      super(0);
+      this.val = val;
+    }
+    public void act() {
+      autoyaxis = this.val;
+    }
+  }
+  class rotset extends command {
+    public double val;
+    public rotset(long wait, double val) {
+      super(wait);
+      this.val = val;
+    }
+    public rotset(double val) {
+      super(0);
+      this.val = val;
+    }
+    public void act() {
+      autorot = this.val;
+    }
+  }
+  // #TODO
+  // currently takes dist in units of rotations of the front left wheel.
+  class gofordist extends command {
+    public gofordist(double dist) {
+      super(() -> {return false;});
+      double startDist = frontLeftEncoder.getPosition();
+      this.cond = () -> {return Math.abs(frontLeftEncoder.getPosition() - startDist) >= dist;};
+    }
+  }
+  class genericCommand extends command {
+    public Runnable action;
+    public genericCommand(long wait, Runnable action) {
+      super(wait);
+      this.action = action;
+    }
+    public genericCommand(Runnable action) {
+      super(0);
+      this.action = action;
+    }
+    public void act() {
+      this.action.run();
+    }
+  }
+  // currently implemented commands:
+  //   wait for specified amount of milliseconds
+  //   wait for boolean to be true ( checks every 20th of a second )*
+  //   set x velocity after a specified amount of milliseconds
+  //   set x velocity immediately
+  //   set y velocity after a specified amount of milliseconds
+  //   set y velocity immediately
+  //   set rotational velocity after a specified amount of milliseconds
+  //   set rotational velocity immediately
+  //   keep moving until specified amount of rotations of the front left wheel have occurred ( checks every 20th of a second )*
+  //   run custom code after specified amount of milliseconds
+  //   run custom code immediately
+  // *every 20th of a second comes from the 50 ms break between checks in command.schedule() in the type 1 false branch
+  @Override
+  public void autonomousInit() {
+    new yaxisset(1000, 1);
+    new yaxisset(1000, 0);
+    new yaxisset(1000, -1);
+    new yaxisset(1000, 0);
+    new command(() -> {return m_driver.getRawButton(Constants.ControllerConstants.X);});
+    new rotset(0, 0.25);
+    new gofordist(1);
+    new rotset(0, -0.25);
+    new gofordist(-1);
+    new rotset(0, 0);
+    autoxaxis = 0;
+    autoyaxis = 0;
+    autorot = 0;
+  }
+  @Override
+  public void autonomousPeriodic() {
+    if(!working && commandQueue.has()) {
+      commandQueue.withdrawl().schedule();
+      working = true;
+    }
+    m_robotDrive.driveCartesian(autorot, autoxaxis, autoyaxis);
   }
 }
