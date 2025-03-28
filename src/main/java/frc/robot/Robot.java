@@ -6,7 +6,7 @@ package frc.robot;
 
 import edu.wpi.first.networktables.GenericEntry;
 import edu.wpi.first.util.sendable.SendableRegistry;
-import edu.wpi.first.wpilibj.Encoder;
+import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.Servo;
 import edu.wpi.first.wpilibj.TimedRobot;
@@ -23,6 +23,9 @@ import java.util.function.BooleanSupplier;
 
 import com.revrobotics.RelativeEncoder;
 import com.revrobotics.spark.SparkMax;
+import com.revrobotics.spark.SparkBase;
+import com.revrobotics.spark.config.LimitSwitchConfig;
+import com.revrobotics.spark.config.SparkMaxConfig;
 import com.studica.frc.AHRS;
 import com.studica.frc.AHRS.NavXComType;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
@@ -38,16 +41,16 @@ public class Robot extends TimedRobot {
   private static final int kIntakeRightChannel = 7;
   private static final int kLeftTemp = 0;
   private static final int kRightTemp = 1;
+  private static final int kLiftLimitDIOChannel = 0;
   private static final int kDriverController = 0;
   private static final int kOperatorController = 1;
   private static final int kButtonTurbo = Constants.ControllerConstants.RT;
   private static final int kButtonGyroAdjust = Constants.ControllerConstants.LT;
   private static final int kButtonGyroReset = Constants.ControllerConstants.BACK;
-  private static final int kButtonLiftUp = Constants.ControllerConstants.Y;
-  private static final int kButtonLiftDown = Constants.ControllerConstants.A;
   private static final int kButtonActUp = Constants.ControllerConstants.RB;
   private static final int kButtonActDown = Constants.ControllerConstants.LB;
-  private static final int kButtonActSelect = Constants.ControllerConstants.B;
+  private static final int kButtonSetLiftToMiddle = Constants.ControllerConstants.Y;
+  private static final int kButtonSetLiftToBottom = Constants.ControllerConstants.A;
   private final MecanumDrive m_robotDrive;
   private final Joystick m_driver;
   private final Joystick m_operator;
@@ -63,7 +66,6 @@ public class Robot extends TimedRobot {
   private Servo leftAct;
   private Servo rightAct;
   private double leftpos;
-  private double rightpos;
   private double autoxaxis;
   private double autoyaxis;
   private double autorot;
@@ -71,6 +73,7 @@ public class Robot extends TimedRobot {
   private commandStream commandQueue;
   private boolean working;
   private RelativeEncoder frontLeftEncoder;
+  private DigitalInput liftlim;
   public Robot() {
     commandQueue = new commandStream();
     working = false;
@@ -84,8 +87,16 @@ public class Robot extends TimedRobot {
     leftAct = new Servo(kLeftTemp);
     rightAct = new Servo(kRightTemp);
     lift = new SparkMax(kLiftChannel, MotorType.kBrushless);
-    intakeLeft = new SparkMax(kIntakeLeftChannel, MotorType.kBrushless);
-    intakeRight = new SparkMax(kIntakeRightChannel, MotorType.kBrushless);
+    liftlim = new DigitalInput(kLiftLimitDIOChannel);
+    SparkMaxConfig limiter = new SparkMaxConfig();
+    LimitSwitchConfig limiterer = new LimitSwitchConfig();
+    limiterer.forwardLimitSwitchEnabled(true);
+    limiterer.forwardLimitSwitchType(LimitSwitchConfig.Type.kNormallyOpen);
+    limiterer.setSparkMaxDataPortConfig();
+    limiter.apply(limiterer);
+    lift.configure(limiter, SparkBase.ResetMode.kResetSafeParameters, SparkBase.PersistMode.kPersistParameters);
+    intakeLeft = new SparkMax(kIntakeLeftChannel, MotorType.kBrushed);
+    intakeRight = new SparkMax(kIntakeRightChannel, MotorType.kBrushed);
     liftEncoder = lift.getEncoder();
     gyro = new AHRS(NavXComType.kMXP_SPI);
     m_robotDrive = new MecanumDrive(frontLeft::set, rearLeft::set, rearRight::set,frontRight::set);
@@ -103,9 +114,8 @@ public class Robot extends TimedRobot {
   public void teleopInit() {
     gyro.reset();
     gyroAdjust = 0;
-    liftEncoder.setPosition(0);
+    liftEncoder.setPosition(600);
     leftpos = 0;
-    rightpos = 0;
   }
   public void teleopPeriodic() {
     if(m_driver.getRawButton(kButtonGyroReset)) {
@@ -119,6 +129,12 @@ public class Robot extends TimedRobot {
     val.setDouble(gyroMeasure);
     liftVal.setDouble(liftEncoder.getPosition());
     gyroMeasure = -gyroMeasure * DEGREES_TO_RADIANS;
+    if (m_operator.getRawButton(kButtonSetLiftToMiddle)) {
+      liftEncoder.setPosition(300);
+    }
+    if (m_operator.getRawButton(kButtonSetLiftToBottom)) {
+      liftEncoder.setPosition(600);
+    }
     if(!m_driver.getRawButton(kButtonTurbo)) {
       sideways /= 2;
       forwards /= 2;
@@ -131,21 +147,19 @@ public class Robot extends TimedRobot {
     // will go from 0 to 400
     // double speed = (m_operator.getRawButton(kButtonLiftUp) ? 1.0 : 0.0) * StrictMath.exp(-liftEncoder.getPosition() / 20) - (m_operator.getRawButton(kButtonLiftDown) ? 1.0 : 0.0) * StrictMath.exp(liftEncoder.getPosition() / 20);
     // double speed = (m_operator.getRawButton(kButtonLiftUp) ? 1.0 : 0.0) - (m_operator.getRawButton(kButtonLiftDown) ? 1.0 : 0.0);
-    double speed = -m_operator.getRawAxis(1)*(0.2-liftEncoder.getPosition()*(liftEncoder.getPosition()/50000-0.008));
+    double speed = m_operator.getRawAxis(1)*(0.2-(liftEncoder.getPosition() / 1.5)*((liftEncoder.getPosition() / 1.5)/50000-0.008));
     if(speed > 1.0) {
       speed = 1.0;
     }
     if(speed < -1.0) {
       speed = -1.0;
     }
-    lift.set(speed);
-    speed = -m_operator.getRawAxis(3);
-    if(speed > 1.0) {
-      speed = 1.0;
+    if (!liftlim.get() && speed >= 0) {
+      lift.set(0);
+    } else {
+      lift.set(speed);
     }
-    if(speed < -1.0) {
-      speed = -1.0;
-    }
+    speed = -m_operator.getRawAxis(3) / 2;
     intakeLeft.set(speed);
     intakeRight.set(-speed);
     speed = (m_operator.getRawButton(kButtonActUp) ? 1.0 : 0.0) - (m_operator.getRawButton(kButtonActDown) ? 1.0 : 0.0);
@@ -155,13 +169,9 @@ public class Robot extends TimedRobot {
     if(speed < -1.0) {
       speed = -1.0;
     }
-    if(m_operator.getRawButton(kButtonActSelect)) {
-      leftpos += speed / 100;
-      leftAct.set(leftpos);
-    } else {
-      rightpos += speed / 100;
-      rightAct.set(rightpos);
-    }
+    leftpos += speed / 100;
+    leftAct.set(leftpos);
+    rightAct.set(leftpos);
     // double target = 50 * (m_operator.getRawButton(kButtonLiftUp) ? 1.0 : 0.0) + 25 * (m_operator.getRawButton(kButtonLiftDown) ? 1.0 : 0.0);
     // lift.set(StrictMath.exp(-(liftEncoder.getPosition() - target) / 20) - StrictMath.exp((liftEncoder.getPosition() - target) / 20));
     gyroMeasure += gyroAdjust;
@@ -306,6 +316,9 @@ public class Robot extends TimedRobot {
   // *every 20th of a second comes from the 50 ms break between checks in command.schedule() in the type 1 false branch
   @Override
   public void autonomousInit() {
+    autoxaxis = 0;
+    autoyaxis = 0;
+    autorot = 0;
     new yaxisset(1000, 1);
     new yaxisset(1000, 0);
     new yaxisset(1000, -1);
@@ -316,9 +329,6 @@ public class Robot extends TimedRobot {
     new rotset(0, -0.25);
     new gofordist(-1);
     new rotset(0, 0);
-    autoxaxis = 0;
-    autoyaxis = 0;
-    autorot = 0;
   }
   @Override
   public void autonomousPeriodic() {
